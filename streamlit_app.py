@@ -1,6 +1,9 @@
 import streamlit as st
 import pandas as pd
 import os
+import matplotlib.pyplot as plt
+from io import BytesIO
+from fpdf import FPDF
 
 # -----------------------------
 # Arquivo CSV para salvar dados
@@ -16,7 +19,7 @@ if not os.path.exists(ARQUIVO):
 df = pd.read_csv(ARQUIVO)
 
 st.set_page_config(page_title="Controle Financeiro", layout="centered")
-st.title("📊 Controle Financeiro de ZigZig")
+st.title("📊 Controle Financeiro Pessoal")
 
 # -----------------------------
 # Formulário de lançamento
@@ -98,6 +101,57 @@ if not df.empty:
         f"<b>Saldo:</b> <span style='color:{cor_saldo}'>R$ {saldo:,.2f}</span>"
         .replace(",", "X").replace(".", ",").replace("X", "."),
         unsafe_allow_html=True
+    )
+
+    # -----------------------------
+    # Gráfico mensal
+    # -----------------------------
+    st.subheader("📈 Gráfico Mensal")
+    df_grafico = df[df["Ano"] == ano_sel].groupby(["Mês", "Tipo"])["Valor"].sum().unstack().fillna(0)
+    df_grafico = df_grafico.reindex(MESES_PT.values())
+    fig, ax = plt.subplots(figsize=(8, 4))
+    df_grafico.plot(kind="bar", ax=ax, color={"Entrada": "green", "Saída": "red"})
+    plt.title(f"Entradas e Saídas - {ano_sel}")
+    plt.xlabel("Meses")
+    plt.ylabel("Valor (R$)")
+    plt.xticks(rotation=45)
+    st.pyplot(fig)
+
+    # -----------------------------
+    # Exportar relatório
+    # -----------------------------
+    st.subheader("📄 Exportar Relatório")
+
+    # Exportar para Excel
+    excel_buffer = BytesIO()
+    with pd.ExcelWriter(excel_buffer, engine="xlsxwriter") as writer:
+        df_formatado.to_excel(writer, index=False, sheet_name="Lançamentos")
+    st.download_button(
+        label="📥 Baixar Excel",
+        data=excel_buffer.getvalue(),
+        file_name=f"relatorio_{mes_sel}_{ano_sel}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+
+    # Exportar para PDF
+    pdf_buffer = BytesIO()
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", size=12)
+    pdf.cell(200, 10, txt=f"Relatório Financeiro - {mes_sel}/{ano_sel}", ln=True, align="C")
+    pdf.ln(5)
+    for i, row in df_formatado.iterrows():
+        pdf.cell(0, 10, txt=f"{row['Data BR']} | {row['Tipo']} | {row['Descrição']} | {row['Valor']}", ln=True)
+    pdf.ln(5)
+    pdf.cell(0, 10, txt=f"Entradas: R$ {entradas:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."), ln=True)
+    pdf.cell(0, 10, txt=f"Saídas: R$ {saidas:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."), ln=True)
+    pdf.cell(0, 10, txt=f"Saldo: R$ {saldo:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."), ln=True)
+    pdf.output(pdf_buffer)
+    st.download_button(
+        label="📥 Baixar PDF",
+        data=pdf_buffer.getvalue(),
+        file_name=f"relatorio_{mes_sel}_{ano_sel}.pdf",
+        mime="application/pdf"
     )
 
 else:
